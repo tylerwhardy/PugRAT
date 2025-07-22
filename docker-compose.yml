@@ -17,12 +17,14 @@ services:
       - pugrat
       
   tunnel:
+    environment:
+      - CLOUDFLARED_TOKEN=${CLOUDFLARED_TOKEN}
     container_name: pugplan-web-es-tunnel
     image: cloudflare/cloudflared
     restart: always
     command: tunnel run
     environment:
-      - TUNNEL_TOKEN=YourTokenHere
+      - TUNNEL_TOKEN=${CLOUDFLARED_TOKEN}
     networks:
       - pugrat
   
