@@ -1,0 +1,31 @@
+version: '3.1'
+
+services:
+
+  pugrat-server:
+    image: ghcr.io/tylerwhardy/pugrat-server-image:latest
+    container_name: pugrat-server
+    restart: unless-stopped
+    ports:
+      - "5555:5555"
+    volumes:
+      - ./data/screenshots:/app/images/screenshots
+      - ./data/webcam:/app/images/webcam
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - pugrat
+      
+  tunnel:
+    container_name: pugplan-web-es-tunnel
+    image: cloudflare/cloudflared
+    restart: always
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=YourTokenHere
+    networks:
+      - pugrat
+  
+networks:
+  pugrat:
+    name: pugrat
