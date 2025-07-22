@@ -10,7 +10,7 @@ WORKDIR /app
 COPY c2.py colour.py ./
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+#RUN pip install --no-cache-dir -r requirements.txt
 
 # Expose (internal) HTTP port
 EXPOSE 5555
