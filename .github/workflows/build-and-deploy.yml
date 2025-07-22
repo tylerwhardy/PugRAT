@@ -1,4 +1,20 @@
-  # Build & Push Multi-arch Docker Images
+
+name: CI – Build, Deploy
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+  id-token: write
+  actions: read
+
+jobs:  # Build & Push Multi-arch Docker Images
   build-and-push:
     name: 🐋 Build & Push Docker Images (multi-arch)
     runs-on: ubuntu-latest
