@@ -23,7 +23,7 @@ jobs:  # Build & Push Multi-arch Docker Images
       matrix:
         image:
           - name: pugrat-server-image
-            context: pugrat-server-image
+            context: .
             dockerfile: server/Dockerfile
             tag: latest
     steps:
