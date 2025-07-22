@@ -7,7 +7,7 @@ RUN apk add --no-cache build-base curl bash
 WORKDIR /app
 
 # Copy app
-COPY requirements.txt c2.py colour.py ./
+COPY c2.py colour.py ./
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
