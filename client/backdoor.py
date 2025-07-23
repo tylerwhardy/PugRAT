@@ -227,9 +227,11 @@ def connection():
     host = 'callback.scarletpug.com'
     port = 443
 
-    context = ssl.create_default_context()
-    context.check_hostname = True
-    context.verify_mode = ssl.CERT_REQUIRED
+    context = ssl._create_unverified_context()  # <== allows self-signed or unknown CA
+    # Alternatively:
+    # context = ssl.create_default_context()
+    # context.check_hostname = False
+    # context.verify_mode = ssl.CERT_NONE
 
     while True:
         try:
