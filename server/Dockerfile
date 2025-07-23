@@ -7,7 +7,7 @@ RUN apk add --no-cache build-base curl bash openssl
 WORKDIR /app
 
 # Copy application files
-COPY c2.py colour.py ./  # Add any others you need
+COPY c2.py colour.py ./
 
 # Create an entrypoint script to generate certs then run the server
 RUN echo '#!/bin/sh' > /app/start.sh && \
