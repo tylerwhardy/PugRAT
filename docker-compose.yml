@@ -9,7 +9,7 @@ services:
     stdin_open: true      # keeps stdin open
     tty: true             # allocates a TTY
     ports:
-      - "8093:5555"
+      - "5555:5555"
     volumes:
       - ./data/screenshots:/app/images/screenshots
       - ./data/webcam:/app/images/webcam
@@ -17,3 +17,7 @@ services:
       - PYTHONUNBUFFERED=1
     networks:
       - pugrat
+
+networks:
+  pugrat:
+    name: pugrat
