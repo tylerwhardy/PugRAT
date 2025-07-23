@@ -6,8 +6,10 @@ services:
     image: ghcr.io/tylerwhardy/pugrat-server-image:latest
     container_name: pugrat-server
     restart: unless-stopped
+    stdin_open: true      # keeps stdin open
+    tty: true             # allocates a TTY
     ports:
-      - "5555:5555"
+      - "8093:5555"
     volumes:
       - ./data/screenshots:/app/images/screenshots
       - ./data/webcam:/app/images/webcam
@@ -15,19 +17,3 @@ services:
       - PYTHONUNBUFFERED=1
     networks:
       - pugrat
-      
-  tunnel:
-    environment:
-      - CLOUDFLARED_TOKEN=${CLOUDFLARED_TOKEN}
-    container_name: pugplan-web-es-tunnel
-    image: cloudflare/cloudflared
-    restart: always
-    command: tunnel run
-    environment:
-      - TUNNEL_TOKEN=${CLOUDFLARED_TOKEN}
-    networks:
-      - pugrat
-  
-networks:
-  pugrat:
-    name: pugrat
