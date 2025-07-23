@@ -228,8 +228,8 @@ def connection():
     port = 443
 
     context = ssl.create_default_context()
-    context.check_hostname = True
-    context.verify_mode = ssl.CERT_NONE  # <- Accept self-signed certs, avoid handshake errors
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
 
     while True:
         try:
