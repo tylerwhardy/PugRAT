@@ -284,9 +284,11 @@ def c2_help_manual():
 
 
 def accept_connections(sock):
+    global targets, ips
     while start_flag:
         sock.settimeout(1)
         try:
+            print("[*] accept_connections() loop running")
             target, ip = sock.accept()
             print(Colour().green(f"[+] Connection received from {ip}"))
 
